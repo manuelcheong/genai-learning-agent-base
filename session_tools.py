@@ -50,7 +50,7 @@ class RedisSessionManager:
             print("❌ Conexión a Redis cerrada.")
 
     async def save_session(self, session_id: str, session_data: AgentSession) -> bool:
-        """Guarda una sesión con expiración (SETEX asíncrono)."""
+        """Guarda una sesión."""
         
         # Serializa el objeto Pydantic a una cadena JSON
         json_string = session_data.model_dump_json()
@@ -76,6 +76,24 @@ class RedisSessionManager:
         
         return None
 
+    async def get_history_by_user_id(self, user_id: str) -> List[Dict[str, str]]:
+        """
+        Busca todas las sesiones de un usuario y devuelve su historial combinado.
+
+        Este método escanea las claves que coinciden con el patrón de sesión,
+        carga cada sesión y, si el user_id coincide, agrega su historial
+        a una lista consolidada.
+        """
+        user_history = []
+        # Escanea todas las claves que podrían ser sesiones de agente
+        async for key in self._redis_pool.scan_iter("agent:session:*"):
+            session_data = await self.load_session(key)
+            # Comprueba si la sesión pertenece al usuario solicitado
+            if session_data and session_data.user_id == user_id:
+                user_history.extend(session_data.history)
+        
+        return user_history
+
 manager = RedisSessionManager(
     host='redis', # Cambiar a 'redis' si se ejecuta dentro de la red Docker
     port=6379,
@@ -90,7 +108,7 @@ async def save_session_user(session_id: str, session_data: AgentSession) -> bool
 
         # Ejemplo de datos de sesión
         new_session = AgentSession(
-            user_id="user_42",
+            user_id=session_id,
             last_interaction=datetime.datetime.utcnow().isoformat(),
             history=[{"role": "user", "text": session_data}]
         )
@@ -104,20 +122,16 @@ async def save_session_user(session_id: str, session_data: AgentSession) -> bool
     finally:
         await manager.close()
 
-async def load_session_user(session_id: str) -> Optional[AgentSession]:
+async def load_session_user(user_id: str) -> Optional[AgentSession]:
     """Carga una sesión y la deserializa, o devuelve None si no existe/expiró."""
 
     try:
         await manager.initialize()
 
         # 2. Cargar la sesión
-        loaded_session = await manager.load_session(session_id)
+        loaded_sessions = await manager.get_history_by_user_id(user_id)
 
-        if loaded_session:
-            print("\n--- Sesión Cargada ---")
-            print(f"ID Usuario: {loaded_session.user_id}")
-            print(f"Última Interacción: {loaded_session.last_interaction}")
-            print(f"Historial: {loaded_session.history}")
+        return loaded_sessions
 
     except Exception as e:
         print(f"\nOcurrió un error: {e}")

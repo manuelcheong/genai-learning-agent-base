@@ -74,6 +74,25 @@ class RedisSessionManager:
         
         return None
 
+    # --- MÉTODO AÑADIDO ---
+    async def get_history_by_user_id(self, user_id: str) -> List[Dict[str, str]]:
+        """
+        Busca todas las sesiones de un usuario y devuelve su historial combinado.
+
+        Este método escanea las claves que coinciden con el patrón de sesión,
+        carga cada sesión y, si el user_id coincide, agrega su historial
+        a una lista consolidada.
+        """
+        user_history = []
+        # Escanea todas las claves que podrían ser sesiones de agente
+        async for key in self._redis_pool.scan_iter("agent:session:*"):
+            session_data = await self.load_session(key)
+            # Comprueba si la sesión pertenece al usuario solicitado
+            if session_data and session_data.user_id == user_id:
+                user_history.extend(session_data.history)
+        
+        return user_history
+
 # --- 3. Uso Principal del Código (Función Asíncrona) ---
 async def main():
     # NOTA: En Docker Compose, el host es 'redis' y la contraseña la obtienes de .env
@@ -87,11 +106,11 @@ async def main():
         await manager.initialize()
 
         # Ejemplo de datos de sesión
-        #session_id = "agent:session:user_42"
+        #session_id = "agent:session:user_45"
         #new_session = AgentSession(
-        #    user_id="user_42",
-        #    last_interaction="2025-10-07T14:35:00Z",
-        #    history=[{"role": "user", "text": "Hola, necesito un resumen."}]
+        #    user_id="user_44",
+        #    last_interaction="2025-08-07T14:35:00Z",
+        #    history=[{"role": "user", "text": "Hola, necsdsdsdn resumen."}]
         #)
 
         # 1. Guardar la sesión
@@ -99,13 +118,16 @@ async def main():
         #print(f"\nEstado de guardado: {saved}")
         
         # 2. Cargar la sesión
-        loaded_session = await manager.load_session("agent:session:user_42")
+        #loaded_session = await manager.load_session("agent:session:user_42")
         
-        if loaded_session:
-            print("\n--- Sesión Cargada ---")
-            print(f"ID Usuario: {loaded_session.user_id}")
-            print(f"Última Interacción: {loaded_session.last_interaction}")
-            print(f"Historial: {loaded_session.history}")
+        #if loaded_session:
+        #    print("\n--- Sesión Cargada ---")
+        #    print(f"ID Usuario: {loaded_session.user_id}")
+        #    print(f"Última Interacción: {loaded_session.last_interaction}")
+        #    print(f"Historial: {loaded_session.history}")
+
+        result = await manager.get_history_by_user_id("user_44")
+        print(result)
 
     except Exception as e:
         print(f"\nOcurrió un error: {e}")
